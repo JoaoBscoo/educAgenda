@@ -94,5 +94,7 @@ export const style = StyleSheet.create({
         color:'blue',
         textDecorationLine:'underline',
     },
-    
+    Icon:{
+        width:'100%',
+    }
 })

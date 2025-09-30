@@ -75,8 +75,8 @@ export const style = StyleSheet.create({
 
         shadowColor: "#000",
         shadowOffset: {
-	        width: 0,
-	        height: 12,
+            width: 0,
+            height: 12,
         },
         shadowOpacity: 0.58,
         shadowRadius: 16.00,
@@ -94,5 +94,7 @@ export const style = StyleSheet.create({
         color:'blue',
         textDecorationLine:'underline',
     },
-    
+    Icon:{
+        width:'100%',
+    }
 })
