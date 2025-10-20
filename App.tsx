@@ -1,21 +1,34 @@
-import { StyleSheet, View } from 'react-native';
+import { NavigationContainer, DefaultTheme } from "@react-navigation/native";
+import { SettingsProvider } from "./src/context/settings";
+import { useThemeColors } from "./src/hooks/useThemeColors";
+import Routes from "./src/routes/index.routes";
 
-import Routes from './src/routes/index.routes';
-import {NavigationContainer} from '@react-navigation/native';
+function AppRoot() {
+  const colors = useThemeColors();
 
-export default function App() {
+  const navTheme = {
+    ...DefaultTheme,
+    colors: {
+      ...DefaultTheme.colors,
+      primary: colors.primary,
+      background: colors.bg, // fundo das telas
+      card: colors.white, // cabeçalho/menus
+      text: colors.text,
+      border: "#E5E7EB",
+    },
+  };
+
   return (
-    <View style={styles.container}>
-      <NavigationContainer>
-        <Routes/>
-
-      </NavigationContainer>
-    </View>
+    <NavigationContainer theme={navTheme}>
+      <Routes />
+    </NavigationContainer>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-});
+export default function App() {
+  return (
+    <SettingsProvider>
+      <AppRoot />
+    </SettingsProvider>
+  );
+}
