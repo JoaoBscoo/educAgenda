@@ -1,25 +1,26 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   View,
-  Text,
   StyleSheet,
   FlatList,
   TouchableOpacity,
   ActivityIndicator,
   Alert,
+  Platform,
+  Linking,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { useThemeColors } from "../../hooks/useThemeColors";
 import * as Speech from "expo-speech";
-import { useSettings, ts } from "../../context/settings";
+import * as Print from "expo-print";
+import * as Sharing from "expo-sharing";
+import { useSettings } from "../../context/settings";
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { format, isSameDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
-import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import type { RootStackParamList } from "../../routes/index.routes";
 import AppHeader from "../../components/app-header";
-
+import AppText from "../../components/AppText";
+import { useThemeColors } from "../../hooks/useThemeColors";
 import { theme } from "../../global/themes";
 import { supabase } from "../../../lib/supabase";
 
@@ -34,30 +35,17 @@ type Agendamento = {
 };
 
 export default function Dashboard() {
-  const { ttsEnabled, fontScale, highContrast } = useSettings();
-  const colors = highContrast
-    ? {
-        ...theme.colors,
-        primary: "#0000FF",
-        text: "#000",
-        white: "#FFF",
-        bg: "#FFF",
-        muted: "#111",
-      }
-    : theme.colors;
+  const { ttsEnabled } = useSettings();
+  const colors = useThemeColors();
+
   const nav = useNavigation();
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [itens, setItens] = useState<Agendamento[]>([]);
-
-  // TODO: integrar com o usuário logado quando estiver pronto
-  const currentUserId = null as unknown as number | null;
+  const [isSpeaking, setIsSpeaking] = useState(false);
 
   const hojeStr = useMemo(
-    () =>
-      format(new Date(), "EEEE, d 'de' MMMM 'de' yyyy", {
-        locale: ptBR,
-      }),
+    () => format(new Date(), "EEEE, d 'de' MMMM 'de' yyyy", { locale: ptBR }),
     []
   );
 
@@ -70,7 +58,7 @@ export default function Dashboard() {
       const fimDoDia = new Date();
       fimDoDia.setHours(23, 59, 59, 999);
 
-      let query = supabase
+      const { data, error } = await supabase
         .from("agendamentos")
         .select(
           "id, usuario_id, titulo, horario, local, minutos_antecedencia, categoria"
@@ -79,38 +67,32 @@ export default function Dashboard() {
         .lte("horario", fimDoDia.toISOString())
         .order("horario", { ascending: true });
 
-      if (currentUserId != null) query = query.eq("usuario_id", currentUserId);
-
-      const { data, error } = await query;
       if (error) throw error;
-
-      setItens((data as Agendamento[]) ?? []);
+      setItens(data ?? []);
     } catch (e: any) {
       Alert.alert("Erro ao carregar eventos", e.message ?? String(e));
     } finally {
       setLoading(false);
     }
-  }, [currentUserId]);
+  }, []);
 
-  // Ao focar na aba, recarrega
   useFocusEffect(
     useCallback(() => {
       fetchHoje();
+      return () => {
+        Speech.stop();
+        setIsSpeaking(false);
+      };
     }, [fetchHoje])
   );
 
-  // Realtime: reage a inserts/updates/deletes
   useEffect(() => {
     const channel = supabase
       .channel("agendamentos-realtime")
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "agendamentos" },
-        (payload) => {
-          // Se quiser filtrar por usuário:
-          // if (currentUserId != null && payload.new?.usuario_id !== currentUserId) return;
-          fetchHoje();
-        }
+        () => fetchHoje()
       )
       .subscribe();
 
@@ -119,31 +101,134 @@ export default function Dashboard() {
     };
   }, [fetchHoje]);
 
-  async function onRefresh() {
-    setRefreshing(true);
-    await fetchHoje();
-    setRefreshing(false);
-  }
+  function falarEventosDoDia() {
+    Speech.stop();
 
-  function lerEventos() {
     if (!itens.length) {
       Speech.speak("Você não possui eventos para hoje.", { language: "pt-BR" });
       return;
     }
+
     const texto = itens
-      .map((ev) => {
+      .map((ev, i) => {
         const hora = format(new Date(ev.horario), "HH:mm");
-        const cat = ev.categoria ?? "Outro";
         const loc = ev.local ? `, no local ${ev.local}` : "";
-        return `${hora} — ${ev.titulo} — categoria ${cat}${loc}`;
+        return `Evento ${i + 1}: ${ev.titulo}, às ${hora}${loc}.`;
       })
-      .join(". ");
-    Speech.speak(`Seus eventos de hoje são: ${texto}.`, { language: "pt-BR" });
+      .join(" ");
+
+    setIsSpeaking(true);
+    Speech.speak(texto, {
+      language: "pt-BR",
+      rate: 1.0,
+      pitch: 1.0,
+      onDone: () => setIsSpeaking(false),
+      onStopped: () => setIsSpeaking(false),
+    });
   }
 
-  function corCategoria(categoria?: Agendamento["categoria"]) {
-    return theme.colors.cat[categoria ?? "Outro"];
+  function pararFala() {
+    Speech.stop();
+    setIsSpeaking(false);
   }
+
+  // ---------- PDF ----------
+  function buildAgendaHtml(hojeStrLocal: string, eventos: Agendamento[]) {
+    const rows = eventos
+      .map((ev) => {
+        const hora = format(new Date(ev.horario), "HH:mm");
+        const local = ev.local ? ev.local : "—";
+        return `
+          <tr>
+            <td>${hora}</td>
+            <td>${ev.titulo}</td>
+            <td>${ev.categoria}</td>
+            <td>${local}</td>
+            <td>${ev.minutos_antecedencia} min</td>
+          </tr>`;
+      })
+      .join("");
+
+    return `
+    <html lang="pt-br">
+      <head>
+        <meta charset="utf-8" />
+        <style>
+          * { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+          h1 { margin: 0 0 4px 0; font-size: 22px; }
+          h2 { margin: 0 0 16px 0; font-size: 14px; color:#555; font-weight: 500; }
+          table { width: 100%; border-collapse: collapse; }
+          th, td { padding: 10px; border-bottom: 1px solid #eee; font-size: 12px; text-align:left; }
+          th { background:#f7f7f7; font-weight:700; }
+          .footer { margin-top: 18px; font-size: 11px; color:#888; }
+        </style>
+      </head>
+      <body>
+        <h1>EducAgenda</h1>
+        <h2>Agendamentos de hoje — ${hojeStrLocal}</h2>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Hora</th>
+              <th>Título</th>
+              <th>Categoria</th>
+              <th>Local</th>
+              <th>Lembrete</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${
+              rows ||
+              `<tr><td colspan="5">Sem agendamentos para hoje.</td></tr>`
+            }
+          </tbody>
+        </table>
+
+        <div class="footer">
+          Gerado em ${format(new Date(), "dd/MM/yyyy HH:mm", { locale: ptBR })}
+        </div>
+      </body>
+    </html>`;
+  }
+
+  async function exportarAgendaPDF() {
+    try {
+      const html = buildAgendaHtml(hojeStr, itens);
+      const { uri } = await Print.printToFileAsync({ html });
+
+      const canShare = await Sharing.isAvailableAsync();
+      if (canShare) {
+        await Sharing.shareAsync(uri, {
+          mimeType: "application/pdf",
+          UTI: "com.adobe.pdf",
+          dialogTitle: "Enviar PDF da agenda",
+        });
+        return;
+      }
+
+      // Fallback: enviar texto via WhatsApp (sem PDF)
+      const resumo = itens.length
+        ? itens
+            .map((ev) => {
+              const h = format(new Date(ev.horario), "HH:mm");
+              const loc = ev.local ? ` — ${ev.local}` : "";
+              return `• ${h} - ${ev.titulo}${loc}`;
+            })
+            .join("%0A")
+        : "Sem agendamentos para hoje.";
+      const msg = `Agenda de hoje (${hojeStr})%0A${resumo}`;
+      const url = `whatsapp://send?text=${msg}`;
+      Alert.alert(
+        "Compartilhar",
+        "Seu dispositivo não suporta compartilhar PDF. Vou enviar o texto."
+      );
+      Linking.openURL(url);
+    } catch (e: any) {
+      Alert.alert("Erro ao exportar", e?.message ?? String(e));
+    }
+  }
+  // ---------- /PDF ----------
 
   function CardEvento({ item }: { item: Agendamento }) {
     const hora = format(new Date(item.horario), "HH:mm");
@@ -159,30 +244,40 @@ export default function Dashboard() {
         <View
           style={[
             styles.card,
-            { backgroundColor: corCategoria(item.categoria) },
+            { backgroundColor: theme.colors.cat[item.categoria] },
           ]}
         >
           <View style={styles.cardHeader}>
-            <Text style={styles.badge}>{item.categoria}</Text>
-            <Text style={styles.hora}>{hora}</Text>
+            <AppText size={12} weight="700" style={styles.badge}>
+              {item.categoria}
+            </AppText>
+            <AppText size={14} weight="700" style={styles.hora}>
+              {hora}
+            </AppText>
           </View>
 
-          <Text style={styles.titulo}>{item.titulo}</Text>
+          <AppText size={16} weight="800" style={styles.titulo}>
+            {item.titulo}
+          </AppText>
 
           <View style={styles.metaRow}>
             <MaterialIcons name="place" size={18} color="#fff" />
-            <Text style={styles.metaText}>{item.local ?? "Sem local"}</Text>
+            <AppText style={styles.metaText}>
+              {item.local ?? "Sem local"}
+            </AppText>
           </View>
 
           <View style={styles.metaRow}>
             <MaterialIcons name="alarm" size={18} color="#fff" />
-            <Text style={styles.metaText}>
+            <AppText style={styles.metaText}>
               Avisar {item.minutos_antecedencia} min antes
-            </Text>
+            </AppText>
           </View>
 
           {!isSameDay(new Date(item.horario), new Date()) && (
-            <Text style={styles.dataForaHoje}>{dia}</Text>
+            <AppText size={12} style={styles.dataForaHoje}>
+              {dia}
+            </AppText>
           )}
         </View>
       </TouchableOpacity>
@@ -190,86 +285,71 @@ export default function Dashboard() {
   }
 
   return (
-    <View style={styles.container}>
-      {/* Cabeçalho */}
+    <View style={[styles.container, { backgroundColor: colors.bg }]}>
       <LinearGradient
         colors={[theme.colors.gradStart, theme.colors.gradEnd]}
         style={styles.header}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
       >
         <AppHeader title="EducAgenda" subtitle="Agendamentos de hoje" />
       </LinearGradient>
 
-      {/* Conteúdo */}
       <View style={styles.content}>
-        <Text style={styles.sectionTitle}>Hoje</Text>
-        <Text style={styles.sectionSub}>{hojeStr}</Text>
+        <AppText size={18} weight="700" style={styles.sectionTitle}>
+          Hoje
+        </AppText>
+        <AppText size={14} style={styles.sectionSub}>
+          {hojeStr}
+        </AppText>
 
         {loading ? (
-          <View style={{ paddingTop: 32 }}>
-            <ActivityIndicator />
-          </View>
+          <ActivityIndicator style={{ marginTop: 32 }} />
         ) : (
           <FlatList
             data={itens}
             keyExtractor={(i) => i.id}
             renderItem={({ item }) => <CardEvento item={item} />}
-            contentContainerStyle={{ paddingBottom: 100 }}
+            contentContainerStyle={{ paddingBottom: 180 }}
             ListEmptyComponent={
-              <Text style={styles.emptyText}>
+              <AppText style={styles.emptyText}>
                 Nenhum agendamento para hoje.
-              </Text>
+              </AppText>
             }
             refreshing={refreshing}
-            onRefresh={onRefresh}
+            onRefresh={fetchHoje}
           />
         )}
       </View>
+
+      {/* TTS */}
       {ttsEnabled && (
         <TouchableOpacity
-          style={{
-            position: "absolute",
-            right: 24,
-            bottom: 160, // fica acima do FAB
-            paddingHorizontal: 16,
-            height: 44,
-            borderRadius: 22,
-            backgroundColor: colors.primary,
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 25,
-          }}
-          onPress={() => {
-            if (!eventosHoje.length) {
-              Speech.speak("Não há eventos para hoje.", { language: "pt-BR" });
-              return;
-            }
-            const texto = eventosHoje
-              .map((e) => {
-                const hora = format(new Date(e.horario), "HH:mm");
-                const loc = e.local ? `, em ${e.local}` : "";
-                return `${hora}: ${e.titulo}${loc}.`;
-              })
-              .join(" ");
-            Speech.speak(texto, {
-              language: "pt-BR",
-              rate: Platform.OS === "ios" ? 0.5 : 1.0,
-            });
-          }}
-          accessibilityLabel="Ler eventos do dia"
-          accessibilityHint="Lê em voz alta os eventos de hoje"
+          style={[styles.fabTTS, { backgroundColor: colors.primary }]}
+          onPress={() => (isSpeaking ? pararFala() : falarEventosDoDia())}
         >
-          <Text style={{ color: "#fff", fontWeight: "800" }}>Ler eventos</Text>
+          <AppText weight="700" style={{ color: "#fff" }}>
+            {isSpeaking ? "Parar" : "Ler eventos"}
+          </AppText>
         </TouchableOpacity>
       )}
-      {/* FAB “+” */}
+
+      {/* Exportar PDF / WhatsApp */}
       <TouchableOpacity
-        style={styles.fabUnified}
-        onPress={() => nav.navigate("CriarEvento" as never)}
-        accessibilityLabel="Botão criar novo evento"
-        accessibilityHint="Abre a tela para adicionar um novo agendamento"
+        style={[styles.fabExport, { backgroundColor: "#25D366" }]}
+        onPress={exportarAgendaPDF}
         activeOpacity={0.9}
+        accessibilityLabel="Exportar PDF"
+        accessibilityHint="Gera um PDF dos agendamentos e abre o WhatsApp para enviar"
+      >
+        <Ionicons name="share-outline" size={22} color="#fff" />
+        <AppText weight="700" style={{ color: "#fff", marginLeft: 8 }}>
+          Exportar
+        </AppText>
+      </TouchableOpacity>
+
+      {/* FAB Novo Evento */}
+      <TouchableOpacity
+        style={[styles.fabUnified, { backgroundColor: colors.primary }]}
+        onPress={() => nav.navigate("CriarEvento" as never)}
       >
         <Ionicons
           name="add"
@@ -277,14 +357,16 @@ export default function Dashboard() {
           color="#fff"
           style={{ marginRight: 8 }}
         />
-        <Text style={styles.fabText}>Novo Evento</Text>
+        <AppText weight="700" style={{ color: "#fff" }}>
+          Novo Evento
+        </AppText>
       </TouchableOpacity>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: theme.colors.bg },
+  container: { flex: 1 },
 
   header: {
     paddingTop: 48,
@@ -293,96 +375,70 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: theme.radius.xl,
     borderBottomRightRadius: theme.radius.xl,
   },
-  headerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "flex-start",
-  },
-  headerTitleBox: {
-    width: "100%",
-  },
-  appTitle: {
-    color: theme.colors.white,
-    fontSize: 22,
-    fontWeight: "700",
-    textAlign: "left",
-  },
-  headerSubtitle: {
-    color: "rgba(255,255,255,0.9)",
-    fontSize: 14,
-    marginTop: 4,
-  },
-
-  quickGrid: { marginTop: 16, flexDirection: "row", gap: 12 },
-  quickItem: {
-    flex: 1,
-    backgroundColor: theme.colors.white,
-    borderRadius: theme.radius.lg,
-    padding: 12,
-    gap: 6,
-  },
-  quickTitle: { fontWeight: "700", color: theme.colors.text },
-  quickSub: { fontSize: 12, color: theme.colors.muted },
 
   content: { flex: 1, paddingHorizontal: 16, paddingTop: 12 },
-  sectionTitle: { fontSize: 18, fontWeight: "700", color: theme.colors.text },
-  sectionSub: { color: theme.colors.muted, marginBottom: 12 },
+  sectionTitle: {},
+  sectionSub: {},
 
   card: { borderRadius: theme.radius.lg, padding: 14, marginBottom: 12 },
-  cardHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 6,
-  },
-  badge: {
-    backgroundColor: "rgba(255,255,255,0.25)",
-    color: "#fff",
-    fontWeight: "700",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
-    overflow: "hidden",
-  },
-  hora: { color: "#fff", fontWeight: "700" },
-  titulo: { color: "#fff", fontSize: 16, fontWeight: "800", marginBottom: 6 },
+  cardHeader: { flexDirection: "row", justifyContent: "space-between" },
+  badge: { color: "#fff" },
+  hora: { color: "#fff" },
+  titulo: { color: "#fff", marginBottom: 6 },
   metaRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2 },
   metaText: { color: "#fff" },
-  dataForaHoje: { color: "#fff", opacity: 0.85, marginTop: 8, fontSize: 12 },
+  dataForaHoje: { color: "#fff", opacity: 0.85 },
 
   emptyText: { color: theme.colors.muted, marginTop: 12 },
 
-  fabContainer: {
+  // TTS
+  fabTTS: {
+    position: "absolute",
+    right: 16,
+    bottom: 168,
+    paddingHorizontal: 18,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: "center",
+    alignItems: "center",
+    elevation: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+  },
+
+  // Export
+  fabExport: {
     position: "absolute",
     flexDirection: "row",
     alignItems: "center",
-    right: 24,
-    bottom: 90, // ajustado para ficar acima da barra
-    zIndex: 20,
+    justifyContent: "center",
+    right: 250,
+    bottom: 100, // sobe mais para não colidir com a tab bar
+    paddingHorizontal: 18,
+    height: 48,
+    borderRadius: 24,
+    elevation: 12, // Android: força ficar por cima
+    zIndex: 30, // iOS: força ficar por cima
+    backgroundColor: "#25D366", // cor do WhatsApp (fallback)
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
   },
 
+  // FAB "Novo Evento"
   fabUnified: {
     position: "absolute",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     right: 10,
-    bottom: 100, // mantém acima da barra
+    bottom: 100,
     paddingHorizontal: 22,
     height: 60,
     borderRadius: 30,
-    backgroundColor: "#007AFF",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 6,
-    elevation: 8,
-    zIndex: 20,
-  },
-
-  fabText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "700",
+    elevation: 10,
   },
 });

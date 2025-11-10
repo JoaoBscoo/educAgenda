@@ -2,32 +2,23 @@
 import { theme } from "../global/themes";
 import { useSettings } from "../context/settings";
 
+/**
+ * Retorna as cores do tema já adaptadas ao Alto Contraste.
+ * Export NOMEADO para combinar com o import do Dashboard.
+ */
 export function useThemeColors() {
   const { highContrast } = useSettings();
 
-  if (!highContrast) return theme.colors;
+  if (highContrast) {
+    return {
+      ...theme.colors,
+      primary: "#0000FF",
+      text: "#000",
+      white: "#FFF",
+      bg: "#FFF",
+      muted: "#111",
+    } as typeof theme.colors;
+  }
 
-  // Paleta de alto contraste (WCAG-friendly)
-  return {
-    ...theme.colors,
-
-    text: "#000000",
-    muted: "#111111",
-    white: "#FFFFFF",
-    bg: "#FFFFFF",
-    gradStart: "#000000",
-    gradEnd: "#333333",
-    primary: "#ffffff",
-    secundary: "#424B54",
-    background: "#93A8AC",
-    destaque: "#3C00EE",
-    // categorias com contraste forte
-    cat: {
-      Pessoal: "#0B63FF",
-      Trabalho: "#0A7A00",
-      Saúde: "#B00020",
-      Educação: "#7B1FA2",
-      Outro: "#111111",
-    } as typeof theme.colors.cat,
-  };
+  return theme.colors;
 }

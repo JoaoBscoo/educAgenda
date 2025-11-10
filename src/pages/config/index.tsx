@@ -6,17 +6,15 @@ import {
   Switch,
   TouchableOpacity,
   Alert,
-  Platform,
 } from "react-native";
 import Slider from "@react-native-community/slider";
-import { Ionicons } from "@expo/vector-icons";
 import AppHeader from "../../components/app-header";
 import { useNavigation } from "@react-navigation/native";
 import { theme } from "../../global/themes";
 import { useSettings, ts } from "../../context/settings";
 import { LinearGradient } from "expo-linear-gradient";
-import { useThemeColors } from "../../hooks/useThemeColors";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import type { RootStackParamList } from "../../routes/index.routes";
 
 export default function Config() {
   const {
@@ -27,6 +25,7 @@ export default function Config() {
     ttsEnabled,
     setTtsEnabled,
   } = useSettings();
+
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
 
@@ -48,7 +47,6 @@ export default function Config() {
         text: "Sair",
         style: "destructive",
         onPress: () => {
-          // Aqui limpamos o histórico e voltamos ao login
           navigation.reset({
             index: 0,
             routes: [{ name: "Login" }],
@@ -93,7 +91,7 @@ export default function Config() {
                 { fontSize: ts(15, fontScale), color: colors.text },
               ]}
             >
-              Alto Contraste
+              Alto contraste
             </Text>
             <Text style={{ color: colors.muted, fontSize: ts(13, fontScale) }}>
               Aumenta o contraste para melhor visibilidade
@@ -103,7 +101,10 @@ export default function Config() {
             value={highContrast}
             onValueChange={setHighContrast}
             thumbColor={highContrast ? colors.primary : "#fff"}
-            trackColor={{ true: "#c7dafc", false: "#D1D5DB" }}
+            trackColor={{ false: "#D1D5DB", true: "#c7dafc" }}
+            accessibilityRole="switch"
+            accessibilityLabel="Ativar alto contraste"
+            accessibilityHint="Ajusta as cores para maior legibilidade"
           />
         </View>
 
@@ -116,7 +117,7 @@ export default function Config() {
                 { fontSize: ts(15, fontScale), color: colors.text },
               ]}
             >
-              Tamanho da Fonte
+              Tamanho da fonte
             </Text>
             <Text style={{ color: colors.muted, fontSize: ts(13, fontScale) }}>
               Ajuste o tamanho de todos os textos
@@ -128,6 +129,7 @@ export default function Config() {
             </Text>
           </View>
         </View>
+
         <Slider
           minimumValue={0.9}
           maximumValue={1.6}
@@ -138,6 +140,7 @@ export default function Config() {
           maximumTrackTintColor="#D1D5DB"
           thumbTintColor={colors.primary}
           style={{ marginTop: 6 }}
+          accessibilityLabel="Controle de tamanho da fonte"
         />
 
         {/* Leitura em voz alta */}
@@ -149,21 +152,26 @@ export default function Config() {
                 { fontSize: ts(15, fontScale), color: colors.text },
               ]}
             >
-              Leitura em Voz Alta
+              Leitura em voz alta
             </Text>
             <Text style={{ color: colors.muted, fontSize: ts(13, fontScale) }}>
-              Adiciona um botão para ler os eventos do dia em voz alta
+              Mostra um botão para ler os eventos do dia em voz alta na tela
+              inicial
             </Text>
           </View>
           <Switch
             value={ttsEnabled}
             onValueChange={setTtsEnabled}
             thumbColor={ttsEnabled ? colors.primary : "#fff"}
-            trackColor={{ true: "#c7dafc", false: "#D1D5DB" }}
+            trackColor={{ false: "#D1D5DB", true: "#c7dafc" }}
+            accessibilityRole="switch"
+            accessibilityLabel="Ativar leitura em voz alta"
+            accessibilityHint="Exibe um botão para ouvir os lembretes"
           />
         </View>
       </View>
-      <View></View>
+
+      {/* Rodapé */}
       <View style={styles.footer}>
         <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
           <Text style={styles.logoutText}>Sair</Text>
@@ -200,38 +208,12 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: theme.radius.xl,
     borderBottomRightRadius: theme.radius.xl,
   },
-  headerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "flex-start",
-  },
-  headerTitleBox: {
-    width: "100%",
-  },
-  appTitle: {
-    color: theme.colors.white,
-    fontSize: 22,
-    fontWeight: "700",
-    textAlign: "left",
-  },
-  headerSubtitle: {
-    color: "rgba(255,255,255,0.9)",
-    fontSize: 14,
-    marginTop: 4,
-  },
   card: {
     marginHorizontal: 16,
     marginTop: 12,
     padding: 14,
     borderRadius: 16,
     elevation: 1,
-  },
-  title: { fontWeight: "800" },
-  pillBtn: {
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
   },
   sectionTitle: { fontWeight: "800", marginBottom: 10 },
   row: {

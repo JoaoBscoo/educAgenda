@@ -11,7 +11,7 @@ import {
 import { Calendar, LocaleConfig, DateObject } from "react-native-calendars";
 import AppHeader from "../../components/app-header";
 import { LinearGradient } from "expo-linear-gradient";
-import { useThemeColors } from "../../hooks/useThemeColors";
+import { useThemeColors } from "../../hooks/useThemedColors";
 import {
   format,
   startOfMonth,
@@ -264,7 +264,7 @@ export default function Agenda() {
           current={format(currentMonth, "yyyy-MM-dd")}
           onDayPress={(day: DateObject) => setSelected(day.dateString)}
           onMonthChange={(m) => {
-            const d = new Date(m.year, m.month - 1, 1);
+            const d = new Date(m.year, m.month - 1, -1);
             setCurrentMonth(d);
             carregarMes(d);
           }}

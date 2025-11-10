@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Text, View, Image, Linking, Alert } from "react-native";
+import { Text, View, Image, Alert, TouchableOpacity } from "react-native";
 import { style } from "./styles";
 import logo from "../../assets/logoMarca.png";
 import { MaterialIcons, Octicons } from "@expo/vector-icons";
@@ -7,7 +7,6 @@ import { supabase } from "../../../lib/supabase";
 import { Input } from "../../components/input";
 import { Button } from "../../components/button";
 import { useNavigation, NavigationProp } from "@react-navigation/native";
-import { useThemeColors } from "../../hooks/useThemeColors";
 
 export default function Login() {
   const navigation = useNavigation<NavigationProp<any>>();
@@ -39,10 +38,9 @@ export default function Login() {
         return;
       }
 
-      // Exibe mensagem
       Alert.alert("Bem-vindo!", `Olá, ${data.login ?? "usuário"}!`);
 
-      // 🚀 Redireciona e limpa o histórico (não permite voltar pro login)
+      // Reseta navegação (não permite voltar ao login)
       navigation.reset({
         index: 0,
         routes: [{ name: "MainTabs" }],
@@ -64,10 +62,13 @@ export default function Login() {
 
       <View style={style.boxMid}>
         <Input
-          title="E-mail"
+          title="Login"
+          value={email}
           onChangeText={setEmail}
           IconRight={MaterialIcons}
           iconRightName="email"
+          keyboardType="email-address"
+          autoCapitalize="none"
         />
 
         <Input
@@ -80,14 +81,24 @@ export default function Login() {
           onIconRightPress={() => setShowPassword(!showPassword)}
         />
       </View>
+
       <View style={style.boxBottom}>
-        <Button text="Entrar" loading={loading} onPress={() => getLogin()} />
-        <Text
-          style={style.link}
-          onPress={() => Linking.openURL("www.google.com.br")}
+        <Button text="Entrar" loading={loading} onPress={getLogin} />
+
+        <TouchableOpacity
+          onPress={() => navigation.navigate("ForgotPassword" as never)}
         >
-          Esqueceu sua senha?
-        </Text>
+          <Text style={[style.link, { marginTop: 30 }]}>
+            Esqueceu sua senha?
+          </Text>
+        </TouchableOpacity>
+        <View></View>
+
+        <TouchableOpacity
+          onPress={() => navigation.navigate("Register" as never)}
+        >
+          <Text style={[style.link, { marginTop: 40 }]}>Criar uma conta</Text>
+        </TouchableOpacity>
       </View>
     </View>
   );
