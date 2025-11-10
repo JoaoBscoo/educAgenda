@@ -10,7 +10,7 @@ import { theme } from "../../global/themes";
 import { style } from "../../components/input/styles";
 import { MaterialIcons, FontAwesome, Octicons } from "@expo/vector-icons";
 import { Icon } from "@rneui/themed";
-import { useThemeColors } from "../../hooks/useThemeColors";
+import { useThemeColors } from "../../hooks/useThemedColors";
 
 type IconComponent =
   | React.ComponentType<React.ComponentProps<typeof MaterialIcons>>

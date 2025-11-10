@@ -1,6 +1,5 @@
 import { Dimensions, StyleSheet } from "react-native";
 import { theme } from "../../global/themes";
-import { useThemeColors } from "../../hooks/useThemedColors";
 
 export const style = StyleSheet.create({
   container: {
@@ -11,20 +10,19 @@ export const style = StyleSheet.create({
   boxTop: {
     height: Dimensions.get("window").height / 3,
     width: "100%",
-    backgroundColor: theme.colors.primary,
+    backgroundColor: "white",
     alignItems: "center",
     justifyContent: "center",
   },
   boxMid: {
     height: Dimensions.get("window").height / 4,
     width: "100%",
-    backgroundColor: theme.colors.primary,
+    backgroundColor: "white",
     paddingHorizontal: 37,
   },
   boxBottom: {
     height: Dimensions.get("window").height / 3,
     width: "100%",
-    backgroundColor: theme.colors.primary,
     alignItems: "center",
   },
   logo: {
@@ -92,8 +90,5 @@ export const style = StyleSheet.create({
     fontSize: 15,
     color: "blue",
     textDecorationLine: "underline",
-  },
-  Icon: {
-    width: "100%",
   },
 });

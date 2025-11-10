@@ -6,7 +6,7 @@ import {
   Text,
 } from "react-native";
 import { style } from "../../components/button/styles";
-import { useThemeColors } from "../../hooks/useThemeColors";
+import { useThemeColors } from "../../hooks/useThemedColors";
 
 type Props = TouchableHighlightProps & {
   text: string;
